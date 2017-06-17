@@ -1,0 +1,33 @@
+#!/bin/sh
+[ "$VERBOSE" ] && set -x
+set -eo pipefail
+
+if [ "$1" = "" ]; then # initial invocation
+
+  set -u
+  : ${BUILD_COUNT:=25}
+  export DISABLE_TIMESTAMP FLY
+
+  while sleep 2; do
+    ${FLY} builds --count=${BUILD_COUNT}
+  done \
+  | awk '$4=="started" &&
+         $2 ~ /^'${CONCOURSE_PIPELINE_NAME}'\// &&
+         a[$1]==0 {
+           print $1, $2, $3
+           a[$1]++
+           fflush()
+         }' \
+  | xargs -n3 -P32 $0
+
+else # recursive invocation
+
+  set -u
+  GLOBAL="$1"
+  NAME="$(echo $2 | awk -F/ '{print $NF}')"
+  BUILD="$3"
+  FORMAT="${NAME} ${BUILD}${DISABLE_TIMESTAMP- %H:%M:%S}>"
+
+  ${FLY} watch --build=${GLOBAL} | ts "${FORMAT}"
+
+fi
